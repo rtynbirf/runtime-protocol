@@ -1,0 +1,17 @@
+# Метаболизм клетки runtime-protocol: приёмки fail-closed на каждый push/PR.
+# Учитель: ci.yml ядра cell-swarm. Клетка офлайн, только stdlib — установки нет.
+name: metabolism
+
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+jobs:
+  cell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: verify — приёмки уравнения, фаз и CANCER_FILTER fail-closed
+        run: make verify

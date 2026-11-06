@@ -1,0 +1,18 @@
+# runtime-protocol — клетка роя cell-swarm
+
+> Исполнимая модель динамики узла: уравнение ρ̇, фазовая машина GENESIS_EXEC
+> (5 фаз + пост-генезис), VOLATILE_META, CANCER_FILTER. Кандидат в когнитивный
+> контур роя. Stdlib-only, офлайн: клон → make → работает.
+
+- ДНК клетки: MANIFEST.json
+- Для людей: README.md
+- Для агентов: AGENTS.md
+- Ядро клетки: runtime_protocol.py
+- Приёмки: test_runtime_protocol.py (`make verify`)
+- Решения: docs/adr/ (закон храповика: только добавляются)
+- Ядро роя: https://github.com/rtynbirf/cell-swarm
+- Спецификация-источник: rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01) — как заявлено в MANIFEST.json
+- Законы: клетка · указатели · храповик · честные границы — MANIFEST.json
+- Лицензия: Apache-2.0
+
+Дата мембраны: 2026-11-07
