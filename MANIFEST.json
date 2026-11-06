@@ -1,0 +1,31 @@
+{
+  "manifest_version": "0.1.0",
+  "name": "runtime-protocol",
+  "kind": "cell",
+  "role": "исполнимая модель динамики узла: уравнение ρ̇ = MΛ[α(1−ρ)ρc²+ρ²] − (1−κMΛ)βρ − ΩₐpΘ(ρc−ρ); фазовая машина GENESIS_EXEC (5 фаз + пост-генезис), VOLATILE_META, CANCER_FILTER; кандидат в когнитивный контур роя cell-swarm",
+  "license": "Apache-2.0",
+  "membrane": {
+    "human": "README.md",
+    "agents": "AGENTS.md"
+  },
+  "metabolism": {
+    "verify": "make verify",
+    "demo": "make demo"
+  },
+  "body": {
+    "kernel": "runtime_protocol.py",
+    "tests": "test_runtime_protocol.py",
+    "decisions": "docs/adr/"
+  },
+  "bridge": {
+    "to": "https://github.com/rtynbirf/cell-swarm",
+    "protocol": "геноминация по Закону 3 (указатели): SHA-пин клетки в swarm.json ядра",
+    "spec_source": "rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01)"
+  },
+  "laws": [
+    "клетка: автономность clone→make→работает, офлайн, только stdlib",
+    "указатели: связь пинами, не импортами",
+    "храповик: тесты и ADR только добавляются",
+    "границы: модельные метрики α/β/ρ не операционализированы — честно помечено в докстринге"
+  ]
+}
