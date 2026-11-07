@@ -103,12 +103,18 @@ def main():
     if not ok:
         sys.exit("ФАКТ: летопись подделана — кровь остановлена до разбора")
 
-    # 2. Входящий конверт: хеш/цепь/ttl (просрочка = STALE, это честный факт)
-    ok, reason = verify_envelope(incoming, tail_hash(lines))
-    if not ok:
-        print(f"ФАКТ: входящий конверт отклонён: {reason} "
-              f"(seq={incoming.get('seq')}, ts={incoming.get('ts')})")
-        sys.exit(0 if reason == STALE else 2)
+    # 2. Входящий конверт: хеш/цепь/ttl (просрочка = STALE, это честный факт).
+    # Идемпотентность: если конверт УЖЕ в летописи (эхо предыдущей клетки
+    # дописано до нас) — повторная доставка не рана, пропускаем сверку хвоста.
+    tail = tail_hash(lines)
+    if incoming.get("hash") == tail:
+        print("ФАКТ: входящий конверт уже в летописи (идемпотентный повтор) — кровь продолжает течь")
+    else:
+        ok, reason = verify_envelope(incoming, tail)
+        if not ok:
+            print(f"ФАКТ: входящий конверт отклонён: {reason} "
+                  f"(seq={incoming.get('seq')}, ts={incoming.get('ts')})")
+            sys.exit(0 if reason == STALE else 2)
 
     # 3. Сверка ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ: моё живое SHA против того, что несёт кровь
     verdict = verdict_for(incoming, cell, cell_sha)
