@@ -1,0 +1,27 @@
+# Тропа роя (ADR-0005): Rust-клетка крови доказывает протокол вторым языком.
+# Золотые пробы — источник Python (tools/make_golden.py --check), тропа — cargo.
+# std-only: крейтов нет, раннер тянет только компилятор.
+name: rust-trail
+
+permissions:
+  contents: read
+
+on:
+  push:
+    paths: ["rust_trail/**", "tools/make_golden.py", ".github/workflows/rust-trail.yml"]
+  workflow_dispatch:
+
+jobs:
+  trail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: золотые пробы — байты ядра и закоммиченные совпадают
+        run: python3 tools/make_golden.py --check
+
+      - name: тропа идёт — cargo test (std-only, байт-в-байт с ядром)
+        run: cargo test --manifest-path rust_trail/Cargo.toml
+
+      - name: тропа сама себя проверяет — blood_hash --self-test
+        run: cargo run --manifest-path rust_trail/Cargo.toml --bin blood_hash -- --self-test

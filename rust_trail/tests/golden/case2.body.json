@@ -1,0 +1,1 @@
+{"dst":"cell-swarm","payload":{"empty":"","list":[1,2,3,true,false,null],"nested":{"a":{},"z":[]},"s":"a\"b\\c\nd\u0001e\b"},"prev_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","seq":3,"src":"клетка-роя","ts":"2026-11-07T18:00:00Z","ttl_s":60,"v":1}
