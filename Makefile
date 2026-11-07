@@ -4,4 +4,7 @@ verify:
 demo:
 	python3 runtime_protocol.py
 
-.PHONY: verify demo
+demo-map:
+	python3 reconciliation.py
+
+.PHONY: verify demo demo-map

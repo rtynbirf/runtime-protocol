@@ -2,7 +2,7 @@
   "manifest_version": "0.1.0",
   "name": "runtime-protocol",
   "kind": "cell",
-  "role": "исполнимая модель динамики узла: уравнение ρ̇ = MΛ[α(1−ρ)ρc²+ρ²] − (1−κMΛ)βρ − ΩₐpΘ(ρc−ρ); фазовая машина GENESIS_EXEC (5 фаз + пост-генезис), VOLATILE_META, CANCER_FILTER; кандидат в когнитивный контур роя cell-swarm",
+  "role": "исполнимая модель динамики узла: уравнение ρ̇ = MΛ[α(1−ρ)ρc²+ρ²] − (1−κMΛ)βρ − ΩₐpΘ(ρc−ρ); фазовая машина GENESIS_EXEC (5 фаз + пост-генезис), VOLATILE_META, CANCER_FILTER; контур сверки «живая карта» (ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ↔ДЕЙСТВИЕ, модельно-предиктивный актюатор, рой без центральной карты); кандидат в когнитивный контур роя cell-swarm",
   "license": "Apache-2.0",
   "membrane": {
     "human": "README.md",
@@ -11,11 +11,13 @@
   },
   "metabolism": {
     "verify": "make verify",
-    "demo": "make demo"
+    "demo": "make demo",
+    "demo-map": "make demo-map"
   },
   "body": {
     "kernel": "runtime_protocol.py",
-    "tests": "test_runtime_protocol.py",
+    "reconciliation": "reconciliation.py",
+    "tests": "test_runtime_protocol.py + test_reconciliation.py",
     "decisions": "docs/adr/"
   },
   "bridge": {

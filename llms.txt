@@ -8,8 +8,9 @@
 - Для людей: README.md
 - Для агентов: AGENTS.md
 - Ядро клетки: runtime_protocol.py
-- Приёмки: test_runtime_protocol.py (`make verify`)
-- Решения: docs/adr/ (закон храповика: только добавляются)
+- Живая карта (контур сверки): reconciliation.py (`make demo-map`) — ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ↔ДЕЙСТВИЕ, модельно-предиктивный актюатор, рой без центральной карты
+- Приёмки: test_runtime_protocol.py + test_reconciliation.py (`make verify`, 17 приёмок)
+- Решения: docs/adr/ (закон храповика: только добавляются; 0002 — контур сверки)
 - Ядро роя: https://github.com/rtynbirf/cell-swarm
 - Спецификация-источник: rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01) — как заявлено в MANIFEST.json
 - Законы: клетка · указатели · храповик · честные границы — MANIFEST.json
