@@ -1,5 +1,8 @@
 # RUNTIME-PROTOCOL — клетка роя cell-swarm
 
+<p align="center"><img src=".github/social-preview.png" alt="runtime-protocol" width="100%"></p>
+
+
 > Исполнимая модель динамики узла: уравнение ρ̇, фазовая машина GENESIS_EXEC,
 > волатильный мета-слой, рак-фильтр. stdlib-only, офлайн.
 
