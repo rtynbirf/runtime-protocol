@@ -1,0 +1,17 @@
+[package]
+name = "rust_trail"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Тропа роя: канонический JSON + sha256 + хеш конверта крови, std-only (ADR-0005)"
+
+[lib]
+name = "rust_trail"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blood_hash"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 2
