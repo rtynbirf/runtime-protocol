@@ -1,0 +1,46 @@
+# Кровь: пульс клетки runtime-protocol. Запуск — ТОЛЬКО событие (dispatch),
+# не таймер (закон 1: угадчик — яд). Клетка сверяет конверт с живым github.sha,
+# дописывает эхо в летопись роя (cell-swarm/blood/LEDGER.jsonl) и передаёт
+# кровь следующей клетке цепи — polymath-os.
+name: blood
+
+permissions:
+  contents: read
+
+on:
+  repository_dispatch:
+    types: [blood-pulse]
+  workflow_dispatch:
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: кровь — сверка конверта и эхо в летопись
+        env:
+          BLOOD_ENVELOPE: ${{ toJson(github.event.client_payload.envelope) }}
+          CELL_NAME: runtime-protocol
+          CELL_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.CELL_SWARM_DISPATCH_TOKEN }}
+        run: |
+          python3 blood_cell.py --next-repo rtynbirf/polymath-os \
+                                --next-output /tmp/next_dispatch.json
+
+      - name: кровь идёт дальше — dispatch → polymath-os
+        if: ${{ github.event_name == 'repository_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.CELL_SWARM_DISPATCH_TOKEN }}
+        run: |
+          if [ ! -s /tmp/next_dispatch.json ]; then
+            echo "dispatch-тело не собрано (этап эха не прошёл или dry-run) — цепь остановлена честно"
+            exit 1
+          fi
+          CODE=$(curl -sS -o /tmp/next.json -w '%{http_code}' -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/rtynbirf/polymath-os/dispatches \
+            -d @/tmp/next_dispatch.json) || CODE=000
+          echo "ФАКТ: dispatch polymath-os: HTTP $CODE (204=кровь потекла дальше)"
+          [ "$CODE" = "204" ] || { cat /tmp/next.json; exit 1; }
