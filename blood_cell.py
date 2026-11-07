@@ -37,6 +37,8 @@ from blood import (
     verify_envelope,
 )
 
+OBSERVED = "OBSERVED"  # клетка без ожидания: наблюдает, не сверяется (ADR-0013 ядра)
+
 API = "https://api.github.com"
 
 
@@ -66,6 +68,22 @@ def read_ledger(token):
     return content.splitlines(), data["sha"], f"{repo}/{path}"
 
 
+def verdict_for(incoming: dict, cell: str, cell_sha: str) -> dict:
+    """Вердикт клетки над конвертом (чистая функция, ADR-0004 + ADR-0013 ядра).
+
+    Есть явное ожидание для меня (payload.cells[cell]) — сверяю точно (eps=0):
+    VERIFIED или DRIFT. Ожидания нет — клетка не сверяется вслепую и не врёт
+    DRIFT, сравнивая чужое ожидание со своим телом: она честно OBSERVED
+    (наблюдает чужой факт и несёт дальше свой наблюдаемый SHA).
+    """
+    expected = (incoming.get("payload", {}).get("cells") or {}).get(cell)
+    if expected is None:
+        return {"status": OBSERVED, "violation": None, "tol": {"eps": 0, "deadband": 0}}
+    return {"status": VERIFIED if expected == cell_sha else DRIFT,
+            "violation": 0 if expected == cell_sha else None,
+            "tol": {"eps": 0, "deadband": 0}}
+
+
 def main():
     dry = "--dry-run" in sys.argv
     env_json = os.environ.get("BLOOD_ENVELOPE", "").strip()
@@ -93,11 +111,8 @@ def main():
         sys.exit(0 if reason == STALE else 2)
 
     # 3. Сверка ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ: моё живое SHA против того, что несёт кровь
+    verdict = verdict_for(incoming, cell, cell_sha)
     expected = (incoming.get("payload", {}).get("cells") or {}).get(cell)
-    verdict = accept(incoming, cell_sha) if expected is None else {
-        "status": VERIFIED if expected == cell_sha else DRIFT,
-        "violation": 0 if expected == cell_sha else None, "tol": {"eps": 0, "deadband": 0},
-    }
     print(f"ФАКТ: сверка {cell}: желаемое={expected} наблюдаемое={cell_sha} "
           f"→ {verdict['status']}")
 
