@@ -143,5 +143,82 @@ class TestSwarmEmergence(unittest.TestCase):
             self.assertGreaterEqual(cell.state.rho, 0.0)
 
 
+class TestIdempotentReconcile(unittest.TestCase):
+    """ADR-0003: level-triggered семантика и идемпотентность сверки
+    (канон операторов: reconcile идемпотентен и level-triggered)."""
+
+    def test_replay_of_same_state_is_bit_identical(self):
+        """Идемпотентность сверки: повторная сверка ТОГО ЖЕ состояния (копия
+        контура со всей его историей, свежая спящая среда) даёт бит-в-бит тот
+        же факт — состояние, параметры, замер, действие, ошибка. Повторный
+        reconcile факта не меняет (канон операторов)."""
+        import copy
+
+        spec = Spec(rho_star=0.30, epsilon=0.05)
+        loop = ReconciliationLoop(spec)
+        territory = Territory(seed=7, debt_pressure=0.05, shock_every=4.0, shock_magnitude=0.04)
+        s, p = NodeState(rho=0.20), Params()
+        for _ in range(37):  # разгон: контур и I-канал с историей, состояние не на старте
+            s, p, *_ = loop.step(s, p, territory, 0.02)
+        snap_s, snap_p = copy.deepcopy(s), copy.deepcopy(p)
+        replay = copy.deepcopy(loop)  # копия контура ДО факта: с его историей, без факта
+        fact_a = loop.step(s, p, Territory(seed=7, debt_pressure=0.0), 0.02)
+        fact_b = replay.step(
+            copy.deepcopy(snap_s), copy.deepcopy(snap_p), Territory(seed=7, debt_pressure=0.0), 0.02
+        )
+        self.assertEqual(fact_a[0], fact_b[0], "повторная сверка дала другое состояние")
+        self.assertEqual(fact_a[1], fact_b[1], "повторная сверка дала другие параметры")
+        self.assertEqual(
+            (fact_a[2], fact_a[3], fact_a[4]),
+            (fact_b[2], fact_b[3], fact_b[4]),
+            "повторная сверка дала другой замер/действие/ошибку",
+        )
+
+    def test_level_triggered_acts_on_constant_error(self):
+        """Level-triggered, не edge-triggered: постоянная ошибка вне дедбенда
+        даёт подбив КАЖДЫЙ такт (edge-контур подействовал бы один раз и замолчал
+        — «карта отстала» по построению)."""
+        spec = Spec(rho_star=0.30, epsilon=0.05)  # ρ=0.20 → постоянная ошибка 0.10
+        loop = ReconciliationLoop(spec, deadband=0.02)
+        s, p = NodeState(rho=0.20), Params()
+        territory = Territory(seed=7, debt_pressure=0.0)
+        actions = [loop.step(s, p, territory, 0.02)[3] for _ in range(20)]
+        self.assertTrue(
+            all(a in (BOOST, BRAKE) for a in actions),
+            f"контур замолчал при постоянной ошибке вне дедбенда: {actions}",
+        )
+
+    def test_act_is_pure_function_of_state(self):
+        """Идемпотентность акта: два свежих актюатора на том же (Params, ошибка)
+        дают бит-в-бит одинаковый (Params, действие) — акт чист, память только
+        в I-канале, которого у свежих нет."""
+        p0 = Params()
+        p1, a1 = Actuator().act(p0, error=0.10, dt=0.02, rho_star=0.30)
+        p2, a2 = Actuator().act(p0, error=0.10, dt=0.02, rho_star=0.30)
+        self.assertEqual((p1, a1), (p2, a2), "акт зависит от скрытой истории")
+        self.assertNotEqual((p1, a1), (p0, HOLD), "подбив ничего не сделал")
+
+    def test_full_run_reproducible_bit_for_bit(self):
+        """Воспроизводимость прогона: тот же seed территории + свежий контур →
+        бит-в-бит тот же след (errors/actions/dts) — сверка детерминирована
+        состоянием, а не временем стены."""
+        territory_a = Territory(seed=7, debt_pressure=0.05, shock_every=4.0, shock_magnitude=0.04)
+        territory_b = Territory(seed=7, debt_pressure=0.05, shock_every=4.0, shock_magnitude=0.04)
+        rep_a = ReconciliationLoop(Spec()).run(rho0=0.20, territory=territory_a, max_t=30.0)[2]
+        rep_b = ReconciliationLoop(Spec()).run(rho0=0.20, territory=territory_b, max_t=30.0)[2]
+        self.assertEqual(rep_a.errors, rep_b.errors)
+        self.assertEqual(rep_a.actions, rep_b.actions)
+        self.assertEqual(rep_a.dts, rep_b.dts)
+
+    def test_integral_bounded_antiwindup(self):
+        """Единственная память — подстройка: при односторонней ошибке интеграл
+        ограничен bias_cap (антиwindup) — накопление не превращается в карту."""
+        actuator = Actuator(gain=0.25, bias_cap=0.50)
+        p = Params()
+        for _ in range(500):
+            p, _ = actuator.act(p, error=0.10, dt=0.02, rho_star=0.30)
+        self.assertLessEqual(abs(actuator.integral), actuator.bias_cap + 1e-9)
+
+
 if __name__ == "__main__":
     unittest.main()
