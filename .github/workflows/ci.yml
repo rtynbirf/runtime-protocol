@@ -15,3 +15,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: verify — приёмки уравнения, фаз и CANCER_FILTER fail-closed
         run: make verify
+
+  notify-genome:
+    # Клетка пушилась в main → сообщает геному cell-swarm (событие, не таймер):
+    # геном сам перерисует пин живым ls-remote (genome-reconcile.yml).
+    # Сеть не гарантирована (клетка офлайн-first): сбой доставки виден в логе,
+    # геном догонит следующим событием или ручным workflow_dispatch.
+    needs: cell
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: repository_dispatch → cell-swarm (cell-pushed)
+        run: |
+          CODE=$(curl -sS -o /tmp/dispatch.json -w '%{http_code}' -X POST \
+            -H "Authorization: token ${{ secrets.CELL_SWARM_DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/rtynbirf/cell-swarm/dispatches \
+            -d '{"event_type":"cell-pushed","client_payload":{"cell":"runtime-protocol","sha":"${{ github.sha }}"}}') || CODE=000
+          if [ "$CODE" = "204" ]; then
+            echo "геном уведомлён (204): пин догонится событием"
+          else
+            echo "dispatch не прошёл (HTTP $CODE) — не фейлим метаболизм; геном догонит следующим событием или workflow_dispatch"
+            cat /tmp/dispatch.json 2>/dev/null || true
+          fi

@@ -9,7 +9,9 @@
 - Для агентов: AGENTS.md
 - Ядро клетки: runtime_protocol.py
 - Живая карта (контур сверки): reconciliation.py (`make demo-map`) — ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ↔ДЕЙСТВИЕ, модельно-предиктивный актюатор, рой без центральной карты
-- Приёмки: test_runtime_protocol.py + test_reconciliation.py (`make verify`, 17 приёмок)
+- Приёмки: test_runtime_protocol.py + test_reconciliation.py (`make verify`, 22 приёмки)
+- Идемпотентность и level-triggered семантика: ADR-0003 — reconcile есть функция текущего состояния, реплей того же состояния бит-в-бит (канон операторов)
+- Событийная сверка генома: push→main шлёт repository_dispatch в ядро cell-swarm — пин догоняется живым ls-remote по событию, не по времени (TH-RTP-04)
 - Решения: docs/adr/ (закон храповика: только добавляются; 0002 — контур сверки)
 - Ядро роя: https://github.com/rtynbirf/cell-swarm
 - Спецификация-источник: rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01) — как заявлено в MANIFEST.json

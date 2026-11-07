@@ -12,7 +12,8 @@
   "metabolism": {
     "verify": "make verify",
     "demo": "make demo",
-    "demo-map": "make demo-map"
+    "demo-map": "make demo-map",
+    "notify-genome": "push→main → repository_dispatch cell-pushed → genome-reconcile (событийная сверка пина)"
   },
   "body": {
     "kernel": "runtime_protocol.py",
@@ -23,7 +24,8 @@
   "bridge": {
     "to": "https://github.com/rtynbirf/cell-swarm",
     "protocol": "геноминация по Закону 3 (указатели): SHA-пин клетки в swarm.json ядра",
-    "spec_source": "rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01)"
+    "spec_source": "rtynbirf/nous, ветка agents/execution, docs/genesis/runtime-protocol.md (TH-RTP-01)",
+    "genome_reconcile": "событийная: клетка сообщает геному о пуше (repository_dispatch), геном перерисовывает пин живым ls-remote — не по времени, не по накоплению (TH-RTP-04)"
   },
   "laws": [
     "клетка: автономность clone→make→работает, офлайн, только stdlib",
