@@ -72,8 +72,12 @@ def make_envelope(src: str, dst: str, seq: int, payload: dict,
     return env
 
 
-def verify_envelope(env: dict, prev_hash: str, now_ts=None):
+def verify_envelope(env: dict, prev_hash: str, now_ts=None, check_ttl=True):
     """Проверка одного конверта против ожидаемого prev_hash и текущего времени.
+
+    check_ttl=False — для ИСТОРИИ летописи: записи прошлого не сверяют со
+    свежестью (они факты, запечатанные хеш-цепью); TTL обязан только
+    входящему конверту при прививке.
 
     Возвращает (ok, reason). ok=True — конверт несёт живой факт;
     ok=False с reason=FORGED/CHAIN_BROKEN/STALE/STRUCTURE — не несёт ничего.
@@ -91,15 +95,16 @@ def verify_envelope(env: dict, prev_hash: str, now_ts=None):
         return False, FORGED
     if env["prev_hash"] != prev_hash:
         return False, "CHAIN_BROKEN"
-    try:
-        born = datetime.strptime(env["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    except (ValueError, TypeError):
-        return False, "STRUCTURE"
-    ttl = env.get("ttl_s", DEFAULT_TTL_S)
-    if not isinstance(ttl, int) or ttl <= 0:
-        return False, "STRUCTURE"
-    if now_ts > born + timedelta(seconds=ttl):
-        return False, STALE
+    if check_ttl:
+        try:
+            born = datetime.strptime(env["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return False, "STRUCTURE"
+        ttl = env.get("ttl_s", DEFAULT_TTL_S)
+        if not isinstance(ttl, int) or ttl <= 0:
+            return False, "STRUCTURE"
+        if now_ts > born + timedelta(seconds=ttl):
+            return False, STALE
     return True, VERIFIED
 
 
@@ -139,6 +144,8 @@ def accept(env: dict, observed, now_ts=None) -> dict:
 
 def chain_verify(lines, now_ts=None):
     """Сверить летопись целиком (JSONL): цепь хешей + монотонный seq по парам src→dst.
+    История сверяется БЕЗ TTL — записи прошлого не протухают, они запечатаны
+    хеш-цепью; свежесть (TTL) обязана только входящему конверту при прививке.
 
     Первый конверт ссылается на GENESIS_HASH. Подмена любой середины ломает
     все хеши после неё — летопись tamper-evident, как Rekor/Trillian.
@@ -155,7 +162,7 @@ def chain_verify(lines, now_ts=None):
             env = json.loads(raw)
         except json.JSONDecodeError:
             return False, "STRUCTURE", n
-        ok, reason = verify_envelope(env, prev, now_ts)
+        ok, reason = verify_envelope(env, prev, check_ttl=False)
         if not ok:
             return False, reason, n
         pair = (env["src"], env["dst"])
