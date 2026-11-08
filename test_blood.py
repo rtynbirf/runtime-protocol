@@ -157,5 +157,87 @@ class TestHashIndependence(unittest.TestCase):
         self.assertEqual(envelope_hash(env), h1)
 
 
+class TestSdkInterop(unittest.TestCase):
+    """Межсхемная приёмка (волна ×6, 6-B): пульс генома (blood_sdk, волна ×3)
+    дописывает SDK-конверты в ту же летопись blood/LEDGER.jsonl, цепляя их
+    prev_hash к хвосту. Верификатор ядра обязан читать обе схемы: чужой факт —
+    не подделка (STRUCTURE), кровь не останавливается ложно. Подмена — ловится."""
+
+    def _chain(self, n=2):
+        envs = []
+        prev = GENESIS_HASH
+        for i in range(1, n + 1):
+            env = make_envelope(f"cell-{i}", "cell-swarm", i, {"i": i}, prev)
+            envs.append(env)
+            prev = env["hash"]
+        return envs
+
+    def _sdk_envelope(self, prev_hash, genome_sha="aa" * 32, created="2026-11-08T19:12:46Z"):
+        import hashlib
+        import json as _json
+        body = {"type": "pulse",
+                "payload": {"pulse_id": "pulse-" + genome_sha[:12], "genome_sha256": genome_sha},
+                "source": {"repo": "rtynbirf/cell-swarm", "ref": "main",
+                           "path": "swarm.json", "sha256": genome_sha},
+                "ttl_days": 7, "prev_hash": prev_hash, "created_at": created}
+        canon = lambda o: _json.dumps(o, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        body["id"] = hashlib.sha256(canon(body).encode()).hexdigest()[:16]
+        body["hash"] = hashlib.sha256(canon(body).encode()).hexdigest()
+        return body
+
+    def test_mixed_ledger_kernel_then_pulse_verifies(self):
+        envs = self._chain(2)
+        sdk = self._sdk_envelope(envs[-1]["hash"])
+        ok, reason, n = chain_verify(_lines(*envs, sdk))
+        self.assertTrue(ok, reason)
+        self.assertEqual(n, 3)
+
+    def test_pulse_only_ledger_verifies(self):
+        sdk = self._sdk_envelope(GENESIS_HASH)
+        ok, reason, n = chain_verify(_lines(sdk))
+        self.assertTrue(ok, reason)
+        self.assertEqual(n, 1)
+
+    def test_kernel_after_pulse_chain_continues(self):
+        envs = self._chain(2)
+        sdk = self._sdk_envelope(envs[-1]["hash"])
+        nxt = make_envelope("runtime-protocol", "polymath-os", 1, {}, sdk["hash"])
+        ok, reason, n = chain_verify(_lines(*envs, sdk, nxt))
+        self.assertTrue(ok, reason)
+        self.assertEqual(n, 4)
+
+    def test_tampered_pulse_payload_is_forged(self):
+        envs = self._chain(1)
+        sdk = self._sdk_envelope(envs[-1]["hash"])
+        sdk["payload"]["genome_sha256"] = "bb" * 32  # подмена факта под печатью
+        ok, reason, n = chain_verify(_lines(*envs, sdk))
+        self.assertFalse(ok)
+        self.assertEqual(reason, FORGED)
+        self.assertEqual(n, 1)
+
+    def test_pulse_wrong_prev_hash_is_chain_broken(self):
+        envs = self._chain(1)
+        sdk = self._sdk_envelope(GENESIS_HASH)  # вцепился не в хвост летописи
+        ok, reason, n = chain_verify(_lines(*envs, sdk))
+        self.assertFalse(ok)
+        self.assertEqual(reason, "CHAIN_BROKEN")
+
+    def test_pulse_fake_id_is_forged(self):
+        envs = self._chain(1)
+        sdk = self._sdk_envelope(envs[-1]["hash"])
+        sdk["id"] = "0" * 16
+        ok, reason, n = chain_verify(_lines(*envs, sdk))
+        self.assertFalse(ok)
+        self.assertEqual(reason, FORGED)
+
+    def test_broken_pulse_record_is_structure(self):
+        envs = self._chain(1)
+        sdk = self._sdk_envelope(envs[-1]["hash"])
+        del sdk["source"]  # нет обязательной триады id/type/source
+        ok, reason, n = chain_verify(_lines(*envs, sdk))
+        self.assertFalse(ok)
+        self.assertEqual(reason, "STRUCTURE")
+
+
 if __name__ == "__main__":
     unittest.main()

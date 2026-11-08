@@ -142,14 +142,60 @@ def accept(env: dict, observed, now_ts=None) -> dict:
     return {"status": status, "violation": violation, "tol": {"eps": eps, "deadband": deadband}}
 
 
+# SDK-конверт пульса (blood_sdk, волна ×3, ПРЕДЛОЖЕНИЕ-21/24): тот же канон
+# (sort_keys, компактные разделители, UTF-8) и та же хеш-сцепка prev_hash → hash,
+# но своя схема записи: type/id/source/ttl_days вместо v/src/dst/seq/ts/ttl_s.
+SDK_REQUIRED = ("id", "type", "payload", "source", "ttl_days", "prev_hash", "hash")
+
+
+def is_sdk_envelope(env) -> bool:
+    """SDK-конверт пульса: нет v (версия ядра), есть триада id/type/source.
+    Пульс генома живёт в той же летописи blood/LEDGER.jsonl и цепляется
+    к её хвосту — верификатор обязан читать обе схемы, иначе чужой факт
+    читается как подделка (STRUCTURE) и кровь останавливается ложно."""
+    return (isinstance(env, dict) and "v" not in env
+            and {"id", "type", "source"}.issubset(env))
+
+
+def verify_sdk_envelope(env: dict, prev_hash: str):
+    """Проверка SDK-конверта пульса в летописи: структура, сцепка, hash и id.
+
+    hash = sha256 канона записи без поля hash; id = первые 16 hex канона
+    записи без полей id и hash (канон blood_sdk зафиксирован в selftest).
+    TTL истории не сверяется — как у конвертов ядра: прошлое запечатано
+    хеш-цепью, свежесть обязана только входящему конверту при прививке.
+    Возвращает (ok, reason) в терминах ядра: STRUCTURE/FORGED/CHAIN_BROKEN.
+    """
+    if not isinstance(env, dict) or any(k not in env for k in SDK_REQUIRED):
+        return False, "STRUCTURE"
+    if not isinstance(env["ttl_days"], int) or env["ttl_days"] < 0:
+        return False, "STRUCTURE"
+    if env["prev_hash"] != prev_hash:
+        return False, "CHAIN_BROKEN"
+    if envelope_hash(env) != env["hash"]:
+        return False, FORGED
+    body = copy.deepcopy(env)
+    body.pop("hash", None)
+    body.pop("id", None)
+    expect_id = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()[:16]
+    if env["id"] != expect_id:
+        return False, FORGED
+    return True, VERIFIED
+
+
 def chain_verify(lines, now_ts=None):
     """Сверить летопись целиком (JSONL): цепь хешей + монотонный seq по парам src→dst.
     История сверяется БЕЗ TTL — записи прошлого не протухают, они запечатаны
     хеш-цепью; свежесть (TTL) обязана только входящему конверту при прививке.
 
+    Летопись одна — писем двое: конверты ядра (v/src/dst/seq) и SDK-конверты
+    пульса генома (type/id/source, волна ×3). Оба запечатаны одним каноном и
+    одной цепью prev_hash → hash; сверкер читает обе схемы, seq-дисциплина
+    (монотонность по парам src→dst) обязана только конвертам ядра.
+
     Первый конверт ссылается на GENESIS_HASH. Подмена любой середины ломает
     все хеши после неё — летопись tamper-evident, как Rekor/Trillian.
-    Возвращает (ok, reason, n): n — число проверенных конвертов.
+    Возвращает (ok, reason, n): n — число проверенных конвертов (обеих схем).
     """
     prev = GENESIS_HASH
     last_seq = {}
@@ -162,6 +208,13 @@ def chain_verify(lines, now_ts=None):
             env = json.loads(raw)
         except json.JSONDecodeError:
             return False, "STRUCTURE", n
+        if is_sdk_envelope(env):
+            ok, reason = verify_sdk_envelope(env, prev)
+            if not ok:
+                return False, reason, n
+            prev = env["hash"]
+            n += 1
+            continue
         ok, reason = verify_envelope(env, prev, check_ttl=False)
         if not ok:
             return False, reason, n
