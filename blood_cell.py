@@ -93,7 +93,18 @@ def main():
     if not env_json or not cell or not cell_sha:
         sys.exit("ФАКТ: нет конверта/имени клетки/SHA — кровь не течёт вслепую")
 
-    incoming = json.loads(env_json)
+    # Гарда конверта (issue #2.1): dispatch без конверта приходит как строка
+    # «null» (toJson(github.event.client_payload.envelope) от пустого payload),
+    # а не пустая строка — проверка на пустоту её пропускала, json.loads давал
+    # None, и клетка взрывалась AttributeError на первом .get(). Честный отказ
+    # (ФАКТ-exit) вместо traceback — гарда стоит ДО первого сетевого шага.
+    try:
+        incoming = json.loads(env_json)
+    except json.JSONDecodeError as exc:
+        sys.exit(f"ФАКТ: конверт не разбирается (JSON: {exc.msg}, позиция {exc.pos}) — кровь не течёт вслепую")
+    if not isinstance(incoming, dict):
+        sys.exit(f"ФАКТ: конверт не объект (получено: {json.dumps(incoming)}) — "
+                 f"dispatch без конверта отклонён, кровь не течёт вслепую")
 
     # 1. Летопись: целостность до прививки (подделанная летопись не принимает кровь)
     lines, file_sha, ledger_where = read_ledger(token)
