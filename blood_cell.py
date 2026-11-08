@@ -16,8 +16,6 @@
 
 Флаги:
   --dry-run            — сверить и напечатать, ничего не писать
-  --manual-check       — ручной workflow_dispatch: только целостность летописи
-                         живьём, без эха и без передачи крови (см. manual_check)
   --next-repo NAME     — собрать dispatch-тело для следующей клетки в файл
   --next-output PATH   — куда положить dispatch-тело (по умолчанию /tmp/next_dispatch.json)
 """
@@ -60,7 +58,7 @@ def api(method, url, token, payload=None):
 
 def read_ledger(token):
     repo = os.environ.get("BLOOD_LEDGER_REPO", "rtynbirf/cell-swarm")
-    path = os.environ.get("BLOOD_LEDGER_PATH", "blood/LEDGER.jsonl")
+    path = os.environ.get("BLOOD_LEDGER_PATH", "blood/CELLS-LEDGER.jsonl")
     st, data = api("GET", f"{API}/repos/{repo}/contents/{path}?ref=main", token)
     if st == 404:
         return [], None, f"{repo}/{path} ещё не существует"
@@ -68,32 +66,6 @@ def read_ledger(token):
         sys.exit(f"ФАКТ: летопись не прочитана, HTTP {st}")
     content = base64.b64decode(data["content"]).decode("utf-8")
     return content.splitlines(), data["sha"], f"{repo}/{path}"
-
-
-def manual_check() -> int:
-    """Честный ноль ручного прогона (TH-KNOW-1).
-
-    Конверт может прийти ТОЛЬКО от предыдущей клетки по repository_dispatch:
-    в workflow_dispatch client_payload не существует, toJson даёт «null», и
-    гарда честно отказывает — рана в том, что красный прогон стареет в
-    инцидент по закону «красный > 24 ч». Ручной запуск обязан быть полезным
-    и зелёным без лжи: клетка сверяет целостность летописи живьём (это и
-    есть её кровная обязанность), не пишет эхо и не передаёт кровь дальше.
-    """
-    cell = os.environ.get("CELL_NAME", "")
-    cell_sha = os.environ.get("CELL_SHA", "")
-    token = os.environ.get("GH_TOKEN", "")
-    if not cell or not cell_sha or not token:
-        print("ФАКТ: ручная сверка без имени клетки/SHA/токена — нечего сверять, "
-              "кровь не течёт вслепую")
-        return 1
-    lines, _file_sha, ledger_where = read_ledger(token)
-    ok, reason, n = chain_verify(lines)
-    print(f"ФАКТ: летопись {ledger_where}: цепь {'целая' if ok else 'СЛОМАНА'} "
-          f"({reason}), конвертов {n}")
-    print("ФАКТ: ручной запуск: конверт приходит только через repository_dispatch "
-          "от предыдущей клетки — кровь не текла, эхо не писано (честный ноль)")
-    return 0 if ok else 2
 
 
 def verdict_for(incoming: dict, cell: str, cell_sha: str) -> dict:
@@ -114,8 +86,6 @@ def verdict_for(incoming: dict, cell: str, cell_sha: str) -> dict:
 
 def main():
     dry = "--dry-run" in sys.argv
-    if "--manual-check" in sys.argv:
-        sys.exit(manual_check())
     env_json = os.environ.get("BLOOD_ENVELOPE", "").strip()
     cell = os.environ.get("CELL_NAME", "")
     cell_sha = os.environ.get("CELL_SHA", "")
@@ -185,7 +155,7 @@ def main():
         print("ФАКТ: dry-run — летопись не тронута")
     else:
         repo = os.environ.get("BLOOD_LEDGER_REPO", "rtynbirf/cell-swarm")
-        path = os.environ.get("BLOOD_LEDGER_PATH", "blood/LEDGER.jsonl")
+        path = os.environ.get("BLOOD_LEDGER_PATH", "blood/CELLS-LEDGER.jsonl")
         new_content = ("\n".join(lines + [echo_line]) + "\n").encode("utf-8")
         st, resp = api("PUT", f"{API}/repos/{repo}/contents/{path}", token, {
             "message": f"blood: эхо клетки {cell} (пульс #{incoming['seq']}, "
