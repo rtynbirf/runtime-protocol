@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: кровь — сверка конверта и эхо в летопись
+        if: ${{ github.event_name == 'repository_dispatch' }}
         env:
           BLOOD_ENVELOPE: ${{ toJson(github.event.client_payload.envelope) }}
           CELL_NAME: runtime-protocol
@@ -27,6 +28,14 @@ jobs:
         run: |
           python3 blood_cell.py --next-repo rtynbirf/polymath-os \
                                 --next-output /tmp/next_dispatch.json
+
+      - name: ручной прогон — сверка летописи живьём (кровь вслепую не льётся)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          CELL_NAME: runtime-protocol
+          CELL_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.CELL_SWARM_DISPATCH_TOKEN }}
+        run: python3 blood_cell.py --manual-check
 
       - name: кровь идёт дальше — dispatch → polymath-os
         if: ${{ github.event_name == 'repository_dispatch' }}
