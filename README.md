@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
+</div>
+
 # RUNTIME-PROTOCOL — клетка роя cell-swarm
 
 <p align="center"><img src=".github/social-preview.png" alt="runtime-protocol" width="100%"></p>
