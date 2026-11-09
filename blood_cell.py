@@ -12,21 +12,41 @@
   CELL_SHA         — наблюдаемый HEAD клетки (github.sha)
   GH_TOKEN         — токен с доступом к летописи и dispatch
   BLOOD_LEDGER_REPO  — репо летописи (по умолчанию rtynbirf/cell-swarm)
-  BLOOD_LEDGER_PATH  — путь летописи (по умолчанию blood/LEDGER.jsonl)
+  BLOOD_LEDGER_PATH  — путь клеточной летописи (по умолчанию
+                       blood/CELLS-LEDGER.jsonl, развёл русел ADR-0004 правка
+                       2026-11-09: LEDGER.jsonl остаётся летописью пульсов П-24)
 
 Флаги:
   --dry-run            — сверить и напечатать, ничего не писать
+  --manual-check       — ручной workflow_dispatch: только целостность летописи
+                         живьём, без эха и без передачи крови (см. manual_check)
   --next-repo NAME     — собрать dispatch-тело для следующей клетки в файл
   --next-output PATH   — куда положить dispatch-тело (по умолчанию /tmp/next_dispatch.json)
+  --stale-retries N    — ретрай-окно переходящих ран: до N попыток сверки (по умолчанию 3)
+  --stale-pause S      — пауза между попытками, секунд (по умолчанию 30)
+
+Ретрай-окно переходящих ран (TODO ×5 п.1, живой кейс run 42401466454): чужая
+летопись в момент сверки может переписываться параллельной волной (гонка
+кровообращения). Переходящие классы — сверка повторяется: летопись
+STRUCTURE/CHAIN_BROKEN (переписанный/пустой срез — именно им проявился
+инцидент «конвертов 0»), входящий конверт STALE (просрочка ttl) и
+CHAIN_BROKEN (хвост летописи не тот, на который конверт ссылается — срез
+летописи мог не содержать ещё не долитых строк). Постоянные раны — честный
+отказ сразу, без ретрая: FORGED (подделка не лечится повтором),
+SEQ_STAGNANT, неразобранный конверт. Исчерпание окна: рваная летопись —
+честный красный (кровь остановлена); входящий STALE — честный ноль
+(TH-KNOW-1: кровь не текла, без лжи и без красного старения в инцидент).
 """
 import base64
 import json
 import os
 import sys
+import time
 import urllib.request
 
 from blood import (
     DRIFT,
+    FORGED,
     STALE,
     VERIFIED,
     accept,
@@ -40,6 +60,83 @@ from blood import (
 OBSERVED = "OBSERVED"  # клетка без ожидания: наблюдает, не сверяется (ADR-0013 ядра)
 
 API = "https://api.github.com"
+
+_sleep = time.sleep  # инъекция паузы: приёмки подменяют, продакшн спит честно
+
+
+def _flag_int(argv, name, default, minimum):
+    """Целый CLI-флаг с честной гарда: мусор/вырожденное значение — ФАКТ-exit
+    до любого сетевого шага, не тихий дефолт (угадчик — яд)."""
+    if name not in argv:
+        return default
+    raw = argv[argv.index(name) + 1] if argv.index(name) + 1 < len(argv) else ""
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        sys.exit(f"ФАКТ: {name} не целое ({raw!r}) — кровь не течёт вслепую")
+    if val < minimum:
+        sys.exit(f"ФАКТ: {name}={val} ниже минимума {minimum} — окно вырождено, отказ")
+    return val
+
+
+def reconcile_pulse(token, incoming, stale_retries=3, stale_pause=30, sleep_fn=None):
+    """Этапы 1–2 крови (летопись → прививка конверта) в ретрай-окне переходящих ран.
+
+    Каждая попытка ЗАНОВО читает летопись: гонка переписи лечится свежим
+    срезом, а не повтором вердикта по старым байтам. Возвращает словарь:
+      state="ok"              — можно течь дальше (lines, file_sha, ledger_where готовы)
+      state="ledger_broken"   — летопись сломана во всех попытках (честный красный)
+      state="stale_exhausted"  — входящий STALE во всех попытках (честный ноль)
+    Постоянные раны поднимают sys.exit сразу (FORGED/SEQ_STAGNANT/мусор).
+    sleep_fn — инъекция паузы для приёмок (тесты не спят, продакшн спит честно).
+    """
+    pause = sleep_fn or _sleep
+    last_ledger = last_env = None  # последние приговоры для честного отчёта
+    for attempt in range(1, stale_retries + 1):
+        print(f"ФАКТ: сверка крови, попытка {attempt}/{stale_retries}")
+        lines, file_sha, ledger_where = read_ledger(token)
+        ok, reason, n = chain_verify(lines)
+        print(f"ФАКТ: летопись {ledger_where}: цепь {'целая' if ok else 'СЛОМАНА'} "
+              f"({reason}), конвертов {n}")
+        if ok:
+            tail = tail_hash(lines)
+            if incoming.get("hash") == tail:
+                print("ФАКТ: входящий конверт уже в летописи (идемпотентный повтор) — кровь продолжает течь")
+                return {"state": "ok", "lines": lines, "file_sha": file_sha,
+                        "ledger_where": ledger_where}
+            ok_env, reason_env = verify_envelope(incoming, tail)
+            if ok_env:
+                return {"state": "ok", "lines": lines, "file_sha": file_sha,
+                        "ledger_where": ledger_where}
+            last_env = reason_env
+            if reason_env == FORGED:
+                sys.exit(f"ФАКТ: входящий конверт отклонён: FORGED — подделка не лечится "
+                         f"повтором (seq={incoming.get('seq')}, ts={incoming.get('ts')})")
+            if reason_env == "SEQ_STAGNANT" or reason_env == "STRUCTURE":
+                print(f"ФАКТ: входящий конверт отклонён: {reason_env} — постоянная рана, "
+                      f"ретрай бессмысленен (seq={incoming.get('seq')}, ts={incoming.get('ts')})")
+                sys.exit(2)
+            # STALE / CHAIN_BROKEN — переходящие: в свежем срезе летописи хвост
+            # мог доехать (параллельная волна долила строки) или эхо уже в цепи.
+            last_ledger = None
+        else:
+            last_ledger = (reason, n)
+            if reason not in ("STRUCTURE", "CHAIN_BROKEN"):
+                # FORGED/SEQ_STAGNANT — подделка/дисциплина не лечатся повтором.
+                sys.exit("ФАКТ: летопись подделана — кровь остановлена до разбора")
+        if attempt < stale_retries:
+            print(f"ФАКТ: рана переходящая ({last_ledger[0] if last_ledger else last_env}) — "
+                  f"пауза {stale_pause}с до повторной сверки")
+            pause(stale_pause)
+    if last_ledger is not None:
+        reason, n = last_ledger
+        print(f"ФАКТ: ретрай-окно исчерпано ({stale_retries} попыток): летопись "
+              f"{reason}, конвертов {n} — гонка не утихла, кровь остановлена честно")
+        return {"state": "ledger_broken"}
+    print(f"ФАКТ: ретрай-окно исчерпано ({stale_retries} попыток): входящий конверт "
+          f"{last_env} (seq={incoming.get('seq')}, ts={incoming.get('ts')}) — "
+          f"кровь не текла, эхо не писано, передача не собрана (честный ноль)")
+    return {"state": "stale_exhausted"}
 
 
 def api(method, url, token, payload=None):
@@ -68,6 +165,32 @@ def read_ledger(token):
     return content.splitlines(), data["sha"], f"{repo}/{path}"
 
 
+def manual_check() -> int:
+    """Честный ноль ручного прогона (TH-KNOW-1).
+
+    Конверт может прийти ТОЛЬКО от предыдущей клетки по repository_dispatch:
+    в workflow_dispatch client_payload не существует, toJson даёт «null», и
+    гарда честно отказывает — рана в том, что красный прогон стареет в
+    инцидент по закону «красный > 24 ч». Ручной запуск обязан быть полезным
+    и зелёным без лжи: клетка сверяет целостность летописи живьём (это и
+    есть её кровная обязанность), не пишет эхо и не передаёт кровь дальше.
+    """
+    cell = os.environ.get("CELL_NAME", "")
+    cell_sha = os.environ.get("CELL_SHA", "")
+    token = os.environ.get("GH_TOKEN", "")
+    if not cell or not cell_sha or not token:
+        print("ФАКТ: ручная сверка без имени клетки/SHA/токена — нечего сверять, "
+              "кровь не течёт вслепую")
+        return 1
+    lines, _file_sha, ledger_where = read_ledger(token)
+    ok, reason, n = chain_verify(lines)
+    print(f"ФАКТ: летопись {ledger_where}: цепь {'целая' if ok else 'СЛОМАНА'} "
+          f"({reason}), конвертов {n}")
+    print("ФАКТ: ручной запуск: конверт приходит только через repository_dispatch "
+          "от предыдущей клетки — кровь не текла, эхо не писано (честный ноль)")
+    return 0 if ok else 2
+
+
 def verdict_for(incoming: dict, cell: str, cell_sha: str) -> dict:
     """Вердикт клетки над конвертом (чистая функция, ADR-0004 + ADR-0013 ядра).
 
@@ -86,6 +209,10 @@ def verdict_for(incoming: dict, cell: str, cell_sha: str) -> dict:
 
 def main():
     dry = "--dry-run" in sys.argv
+    if "--manual-check" in sys.argv:
+        sys.exit(manual_check())
+    stale_retries = _flag_int(sys.argv, "--stale-retries", 3, 1)
+    stale_pause = _flag_int(sys.argv, "--stale-pause", 30, 0)
     env_json = os.environ.get("BLOOD_ENVELOPE", "").strip()
     cell = os.environ.get("CELL_NAME", "")
     cell_sha = os.environ.get("CELL_SHA", "")
@@ -106,26 +233,14 @@ def main():
         sys.exit(f"ФАКТ: конверт не объект (получено: {json.dumps(incoming)}) — "
                  f"dispatch без конверта отклонён, кровь не течёт вслепую")
 
-    # 1. Летопись: целостность до прививки (подделанная летопись не принимает кровь)
-    lines, file_sha, ledger_where = read_ledger(token)
-    ok, reason, n = chain_verify(lines)
-    print(f"ФАКТ: летопись {ledger_where}: цепь {'целая' if ok else 'СЛОМАНА'} "
-          f"({reason}), конвертов {n}")
-    if not ok:
-        sys.exit("ФАКТ: летопись подделана — кровь остановлена до разбора")
-
-    # 2. Входящий конверт: хеш/цепь/ttl (просрочка = STALE, это честный факт).
-    # Идемпотентность: если конверт УЖЕ в летописи (эхо предыдущей клетки
-    # дописано до нас) — повторная доставка не рана, пропускаем сверку хвоста.
-    tail = tail_hash(lines)
-    if incoming.get("hash") == tail:
-        print("ФАКТ: входящий конверт уже в летописи (идемпотентный повтор) — кровь продолжает течь")
-    else:
-        ok, reason = verify_envelope(incoming, tail)
-        if not ok:
-            print(f"ФАКТ: входящий конверт отклонён: {reason} "
-                  f"(seq={incoming.get('seq')}, ts={incoming.get('ts')})")
-            sys.exit(0 if reason == STALE else 2)
+    # 1–2. Летопись + входящий конверт в ретрай-окне переходящих ран (×6):
+    # каждая попытка читает летопись заново — гонка переписи лечится свежим срезом.
+    pulse = reconcile_pulse(token, incoming, stale_retries, stale_pause)
+    if pulse["state"] == "ledger_broken":
+        sys.exit(2)
+    if pulse["state"] == "stale_exhausted":
+        sys.exit(0)  # честный ноль (TH-KNOW-1): кровь не текла без лжи
+    lines, file_sha, ledger_where = pulse["lines"], pulse["file_sha"], pulse["ledger_where"]
 
     # 3. Сверка ЖЕЛАЕМОЕ↔НАБЛЮДАЕМОЕ: моё живое SHA против того, что несёт кровь
     verdict = verdict_for(incoming, cell, cell_sha)
