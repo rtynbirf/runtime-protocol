@@ -24,6 +24,8 @@
   --next-output PATH   — куда положить dispatch-тело (по умолчанию /tmp/next_dispatch.json)
   --stale-retries N    — ретрай-окно переходящих ран: до N попыток сверки (по умолчанию 3)
   --stale-pause S      — пауза между попытками, секунд (по умолчанию 30)
+  --echo-retries N     — ретрай-окно эха (гонка file_sha): до N попыток PUT (по умолчанию 3)
+  --echo-pause S       — пауза между попытками эха, секунд (по умолчанию 10)
 
 Ретрай-окно переходящих ран (TODO ×5 п.1, живой кейс run 42401466454): чужая
 летопись в момент сверки может переписываться параллельной волной (гонка
@@ -36,6 +38,17 @@ CHAIN_BROKEN (хвост летописи не тот, на который ко�
 SEQ_STAGNANT, неразобранный конверт. Исчерпание окна: рваная летопись —
 честный красный (кровь остановлена); входящий STALE — честный ноль
 (TH-KNOW-1: кровь не текла, без лжи и без красного старения в инцидент).
+
+Ретрай-окно эха (TODO ×6 п.4, волна ×8): между чтением летописи и PUT эха
+чужая клетка может долить свою строку — GitHub ответит HTTP 409 (sha устарел).
+Лечение то же, что у сверки: свежий срез (перечитать, сверить цепь, собрать
+эхо ЗАНОВО против нового хвоста — свежий seq и свежий prev_hash), не повтор
+вердикта по старым байтам. Идемпотентность: если наше эхо уже стоит в свежем
+срезе (тот же src и тот же pulse) — дубля нет, кровь продолжает течь.
+Переходящие HTTP: 409 (гонка file_sha), 422 с sha-миссматчем, 5xx (сервер).
+Постоянные: прочие 4xx — отказ сразу; свежий срез FORGED/SEQ_STAGNANT —
+отказ сразу; STRUCTURE/CHAIN_BROKEN — переходящая гонка переписи.
+Исчерпание окна эха — честный exit 3: эхо не долито, летопись без факта.
 """
 import base64
 import json
@@ -165,6 +178,104 @@ def read_ledger(token):
     return content.splitlines(), data["sha"], f"{repo}/{path}"
 
 
+def build_echo(lines, cell, expected, status, pulse_seq):
+    """Собрать эхо-конверт клетки против хвоста ДАННОГО среза летописи.
+
+    Чистая сборка: seq учитывает чужие эха клетки в срезе (монотонность пары
+    src→dst), prev_hash — хеш хвоста среза. В гонке срез меняется — эхо
+    собирается заново (append_echo), не переиспользуется по старым байтам.
+    """
+    seq = 1
+    for raw in lines:
+        raw = raw.strip()
+        if raw:
+            e = json.loads(raw)
+            if e.get("src") == cell:
+                seq = max(seq, e["seq"] + 1)
+    echo = make_envelope(
+        src=cell, dst="cell-swarm", seq=seq,
+        payload={"observed": os.environ.get("CELL_SHA", ""),
+                 "expected": expected,
+                 "status": status,
+                 "pulse": pulse_seq},
+        prev_hash=tail_hash(lines), ttl_s=900)
+    return echo, canonical_json(echo)
+
+
+def append_echo(token, lines, file_sha, incoming, cell, expected, status,
+                echo_retries=3, echo_pause=10, sleep_fn=None):
+    """Шаг 4 крови: дописать эхо в летопись в ретрай-окне гонки file_sha (TODO ×6 п.4).
+
+    Переходящие раны эха: HTTP 409 (чужая клетка долила строку между чтением
+    и PUT — sha устарел), 422 с sha-миссматчем, 5xx. Лечение — свежий срез:
+    перечитать летопись, сверить цепь, собрать эхо ЗАНОВО против нового
+    хвоста и переслить PUT (не повтор вердикта по старым байтам).
+    Идемпотентность: наше эхо уже в свежем срезе (тот же src, тот же pulse) —
+    дубля нет, кровь продолжает течь.
+    Постоянные раны: прочие 4xx — отказ сразу; свежий срез FORGED/SEQ_STAGNANT —
+    отказ сразу (подделка и дисциплина не лечатся повтором);
+    STRUCTURE/CHAIN_BROKEN — переходящая гонка переписи (как в reconcile_pulse).
+    Исчерпание окна — честный sys.exit(3): эхо не долито, летопись без факта.
+    Возвращает долетевшее эхо (собранное заново или найденное в срезе) —
+    его несёт дальше шаг 5 (кровь следующей клетки).
+    sleep_fn — инъекция паузы для приёмок (тесты не спят, продакшн спит честно).
+    """
+    pause = sleep_fn or _sleep
+    repo = os.environ.get("BLOOD_LEDGER_REPO", "rtynbirf/cell-swarm")
+    path = os.environ.get("BLOOD_LEDGER_PATH", "blood/CELLS-LEDGER.jsonl")
+    last = "окно не открыто"
+    for attempt in range(1, echo_retries + 1):
+        print(f"ФАКТ: эхо в летопись, попытка {attempt}/{echo_retries}")
+        echo, echo_line = build_echo(lines, cell, expected, status, incoming["seq"])
+        if attempt == 1:
+            print(f"ФАКТ: эхо-конверт слит: seq={echo['seq']} hash={echo['hash'][:12]}…")
+        new_content = ("\n".join(lines + [echo_line]) + "\n").encode("utf-8")
+        st, resp = api("PUT", f"{API}/repos/{repo}/contents/{path}", token, {
+            "message": f"blood: эхо клетки {cell} (пульс #{incoming['seq']}, {status})",
+            "content": base64.b64encode(new_content).decode(),
+            "sha": file_sha,
+        })
+        print(f"ФАКТ: эхо в летопись: HTTP {st} (200/201=дописано)")
+        if st in (200, 201):
+            return echo
+        transient = (st == 409 or st >= 500
+                     or (st == 422 and "sha" in json.dumps(resp).lower()))
+        if not transient:
+            sys.exit(f"ФАКТ: эхо не принято, HTTP {st} "
+                     f"({(resp or {}).get('message', '')[:120]}) — постоянная рана, "
+                     f"кровь не течёт вслепую")
+        last = f"HTTP {st}"
+        if attempt >= echo_retries:
+            break
+        # Лечение — свежий срез, не повтор вердикта по старым байтам (×6-канон).
+        fresh_lines, fresh_sha, where = read_ledger(token)
+        ok, reason, n = chain_verify(fresh_lines)
+        print(f"ФАКТ: свежий срез {where}: цепь {'целая' if ok else 'СЛОМАНА'} "
+              f"({reason}), конвертов {n}")
+        if ok:
+            for raw in fresh_lines:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                e = json.loads(raw)
+                if (e.get("src") == cell
+                        and e.get("payload", {}).get("pulse") == incoming["seq"]):
+                    print(f"ФАКТ: наше эхо уже в летописи (пульс #{incoming['seq']}) — "
+                          f"идемпотентный повтор, дубля нет")
+                    return e
+            lines, file_sha = fresh_lines, fresh_sha
+        elif reason in ("FORGED", "SEQ_STAGNANT"):
+            sys.exit(f"ФАКТ: свежий срез летописи {reason} — подделка/дисциплина "
+                     f"не лечатся повтором, эхо остановлено")
+        else:  # STRUCTURE / CHAIN_BROKEN — переходящая гонка переписи
+            last = reason
+        print(f"ФАКТ: рана переходящая ({last}) — пауза {echo_pause}с до повторной попытки")
+        pause(echo_pause)
+    print(f"ФАКТ: ретрай-окно эха исчерпано ({echo_retries} попыток): {last} — "
+          f"эхо не долито, кровь остановлена честно")
+    sys.exit(3)
+
+
 def manual_check() -> int:
     """Честный ноль ручного прогона (TH-KNOW-1).
 
@@ -213,6 +324,8 @@ def main():
         sys.exit(manual_check())
     stale_retries = _flag_int(sys.argv, "--stale-retries", 3, 1)
     stale_pause = _flag_int(sys.argv, "--stale-pause", 30, 0)
+    echo_retries = _flag_int(sys.argv, "--echo-retries", 3, 1)
+    echo_pause = _flag_int(sys.argv, "--echo-pause", 10, 0)
     env_json = os.environ.get("BLOOD_ENVELOPE", "").strip()
     cell = os.environ.get("CELL_NAME", "")
     cell_sha = os.environ.get("CELL_SHA", "")
@@ -248,39 +361,19 @@ def main():
     print(f"ФАКТ: сверка {cell}: желаемое={expected} наблюдаемое={cell_sha} "
           f"→ {verdict['status']}")
 
-    # 4. Эхо-конверт: клетка возвращает в летопись свой факт (не нарратив)
-    seq = 1
-    for raw in lines:
-        raw = raw.strip()
-        if raw:
-            e = json.loads(raw)
-            if e.get("src") == cell:
-                seq = max(seq, e["seq"] + 1)
-    echo = make_envelope(
-        src=cell, dst="cell-swarm", seq=seq,
-        payload={"observed": cell_sha,
-                 "expected": expected,
-                 "status": verdict["status"],
-                 "pulse": incoming["seq"]},
-        prev_hash=tail_hash(lines), ttl_s=900)
-    echo_line = canonical_json(echo)
-    print(f"ФАКТ: эхо-конверт слит: seq={seq} hash={echo['hash'][:12]}…")
+    # 4. Эхо-конверт: клетка возвращает в летопись свой факт (не нарратив).
+    # Сборка против текущего хвоста; в гонке file_sha (HTTP 409 и др.) —
+    # свежий срез и пересборка (ретрай-окно эха, TODO ×6 п.4).
+    echo_preview, _ = build_echo(lines, cell, expected, verdict["status"],
+                                 incoming["seq"])
+    print(f"ФАКТ: эхо-конверт слит: seq={echo_preview['seq']} "
+          f"hash={echo_preview['hash'][:12]}…")
 
     if dry:
         print("ФАКТ: dry-run — летопись не тронута")
     else:
-        repo = os.environ.get("BLOOD_LEDGER_REPO", "rtynbirf/cell-swarm")
-        path = os.environ.get("BLOOD_LEDGER_PATH", "blood/CELLS-LEDGER.jsonl")
-        new_content = ("\n".join(lines + [echo_line]) + "\n").encode("utf-8")
-        st, resp = api("PUT", f"{API}/repos/{repo}/contents/{path}", token, {
-            "message": f"blood: эхо клетки {cell} (пульс #{incoming['seq']}, "
-                       f"{verdict['status']})",
-            "content": base64.b64encode(new_content).decode(),
-            "sha": file_sha,
-        })
-        print(f"ФАКТ: эхо в летопись: HTTP {st} (200/201=дописано)")
-        if st not in (200, 201):
-            sys.exit(3)
+        echo = append_echo(token, lines, file_sha, incoming, cell, expected,
+                           verdict["status"], echo_retries, echo_pause)
 
     # 5. Кровь для следующей клетки (если цепь задана)
     if "--next-repo" in sys.argv:
