@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "Если используете этот проект, процитируйте его так."
+title: "runtime-protocol"
+abstract: "Клетка роя cell-swarm: исполнимая модель динамики узла (уравнение ρ̇, GENESIS_EXEC, VOLATILE_META, CANCER_FILTER). stdlib-only, офлайн."
+authors:
+  - name: "Полимат-Универсум (rtynbirf)"
+repository-code: "https://github.com/rtynbirf/runtime-protocol"
+license: "Apache-2.0"
