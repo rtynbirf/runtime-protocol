@@ -2,6 +2,15 @@
   <img src="banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
 </div>
 
+<!--ФОРЖ:МУЗА:НАЧАЛО-->
+<div align="center">
+  <img src="repo-muse.svg" width="100%" alt="Муза runtime-protocol: картина кузни ПОЛИМАТ, раунд 9" />
+  <br/>
+  <img src="forge-divider.svg" width="62%" alt="разделитель кузни ПОЛИМАТ" />
+</div>
+<!--ФОРЖ:МУЗА:КОНЕЦ-->
+
+
 # RUNTIME-PROTOCOL — клетка роя cell-swarm
 
 <p align="center"><img src=".github/social-preview.png" alt="runtime-protocol" width="100%"></p>
@@ -98,3 +107,10 @@ python3 -m unittest test_fold -v
 ## Лицензия
 
 Apache-2.0. Клетка роя: связь с ядром — SHA-пином в `swarm.json` (Закон 3).
+
+<!--ФОРЖ:ПОДВАЛ-->
+---
+
+<div align="center">
+  <sub>◆ картина и штандарт — ручная ковка <a href="https://github.com/rtynbirf">КУЗНИ ПОЛИМАТ</a> · ЧЕЛОВЕК=АККАУНТ=PID1 ◆</sub>
+</div>
