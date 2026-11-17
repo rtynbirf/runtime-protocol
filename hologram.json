@@ -2,7 +2,7 @@
  "hologram": 1,
  "root": "c223bd4a2f6a56783c1fbdb1b1f671fa61c3150ecf320c82796ea5763043a696",
  "n": 73,
- "storage": 68,
+ "storage": 36,
  "r": 3,
  "self": {
   "name": "runtime-protocol",
@@ -306,10 +306,28 @@
  ],
  "flesh": [
   {
+   "name": "H-PE11-PHOENIX",
+   "desc": "PHOENIX-11: ворклог операций TH-* (журнал неповторимых результатов), сборки WinPE, сессии. Правила ведения — в rtynbirf/repo-doctrine.",
+   "lang": "PowerShell",
+   "cluster": "OS"
+  },
+  {
    "name": "kb",
    "desc": "Знания дома: канон-тексты, гайды, досье — место по канону §4",
    "lang": "",
    "cluster": ""
+  },
+  {
+   "name": "markitdown",
+   "desc": "MarkItDown",
+   "lang": "Python",
+   "cluster": "VAULT"
+  },
+  {
+   "name": "polymath-gen",
+   "desc": "ПОЛИМАТ-ГЕН: автономный медиа-агент — задание человека -> промпт -> изображение/видео -> самокритика -> доработка. LLM-мозг + open-source руки (ComfyUI/FLUX/Wan2.2)",
+   "lang": "Python",
+   "cluster": "AGENTS"
   },
   {
    "name": "uace-pml",
