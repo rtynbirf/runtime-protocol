@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
+  <img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
 </div>
 
 <!--ФОРЖ:МУЗА:НАЧАЛО-->
 <div align="center">
-  <img src="repo-muse.svg" width="100%" alt="Муза runtime-protocol: мастерская ОСЦИЛЛОГРАФ, кузня ПОЛИМАТ, раунд 12 · REVE=РЕВО" />
+  <img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/repo-muse.svg" width="100%" alt="Муза runtime-protocol: мастерская ОСЦИЛЛОГРАФ, кузня ПОЛИМАТ, раунд 12 · REVE=РЕВО" />
   <br/>
-  <img src="forge-divider.svg" width="62%" alt="делитель мастерской ОСЦИЛЛОГРАФ" />
+  <img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/forge-divider.svg" width="62%" alt="делитель мастерской ОСЦИЛЛОГРАФ" />
 </div>
 <!--ФОРЖ:МУЗА:КОНЕЦ-->
 
@@ -24,7 +24,7 @@
 
 # RUNTIME-PROTOCOL — клетка роя cell-swarm
 
-<p align="center"><img src=".github/social-preview.png" alt="runtime-protocol" width="100%"></p>
+<p align="center"><img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/.github/social-preview.png" alt="runtime-protocol" width="100%"></p>
 
 
 > Исполнимая модель динамики узла: уравнение ρ̇, фазовая машина GENESIS_EXEC,
