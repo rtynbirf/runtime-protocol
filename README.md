@@ -1,5 +1,7 @@
 <div align="center">
-  <img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
+
+<a href="https://github.com/rtynbirf/runtime-protocol"><img src="banner.png" width="100%" alt="runtime-protocol — штандарт мастерской в каноне ORNAMENTAL MYTHO-REALISM"></a>
+
 </div>
 
 <!--ФОРЖ:МУЗА:НАЧАЛО-->
@@ -12,13 +14,23 @@
 
 <!--ФОРЖ:ПАСПОРТ:НАЧАЛО-->
 <div align="center">
-  <img src="revo-page.svg" width="100%" alt="РЕВО-паспорт страницы runtime-protocol в каноне ORNAMENTAL MYTHO-REALISM: орнаментальная решётка, медальон-миф, строение файлов, лексикон — по фактическому контенту" />
+  <img src="revo-page.svg" width="100%" alt="РЕВО-паспорт страницы runtime-protocol №51 в каноне ORNAMENTAL MYTHO-REALISM: орнаментальная решётка, медальон-миф, строение файлов, лексикон — по фактическому контенту" />
 </div>
 
 | ФАЙЛОВ | ПАПОК | КОММИТОВ | ОБНОВЛЕНО | РЕЛИЗОВ |
 |---:|---:|---:|---|---:|
-| 84 | 11 | 182 | 2026-11-28 | 0 |
+| 84 | 11 | 1 | 2026-11-28 | 1 |
 <!--ФОРЖ:ПАСПОРТ:КОНЕЦ-->
+
+# runtime-protocol
+
+<div align="center">
+  <img src="https://cdn.jsdelivr.net/gh/rtynbirf/runtime-protocol@main/banner.png" alt="runtime-protocol — Исполнимая модель динамики узла роя" width="100%">
+</div>
+
+
+
+
 
 
 
